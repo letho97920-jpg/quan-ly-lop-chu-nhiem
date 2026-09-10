@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>📋 Tổ Trưởng – Nhật Ký Vi Phạm</title>
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <style>
 :root {
   --bg:#0f1117; --bg2:#161820; --card:#1c1f2e; --card2:#22263a;
@@ -112,10 +115,19 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;font
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .toast.err{background:var(--red)}
 
+/* DASHBOARD STATS */
+.dashboard-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.stat-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 6px 10px;text-align:center}
+.stat-icon{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;margin:0 auto 6px}
+.stat-value{font-size:19px;font-weight:900;line-height:1}
+.stat-label{font-size:8.5px;color:var(--text2);font-weight:700;margin-top:4px;letter-spacing:.3px;text-transform:uppercase;line-height:1.3}
+
 /* TABS */
 .nav-tabs{display:flex;gap:6px;margin-bottom:14px}
-.nav-tab{flex:1;padding:9px 6px;background:var(--card);border:1.5px solid var(--border);border-radius:10px;font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;text-align:center;transition:all .15s}
+.nav-tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;padding:10px 4px 8px;background:var(--card);border:1.5px solid var(--border);border-radius:12px;font-size:12px;font-weight:700;color:var(--text2);cursor:pointer;text-align:center;transition:all .15s}
 .nav-tab.active{background:rgba(108,142,245,.15);border-color:var(--accent);color:var(--accent)}
+.nav-tab-icon{width:28px;height:28px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.nav-tab-label{font-size:10.5px;font-weight:700;line-height:1.2}
 
 /* GIAO FILE MODAL */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:200;padding:16px;overflow-y:auto}
@@ -129,9 +141,33 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;font
 .step-num{width:26px;height:26px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;color:#fff;flex-shrink:0}
 .step-txt b{display:block;font-size:13px;margin-bottom:2px}
 .step-txt span{font-size:12px;color:var(--text2);line-height:1.6}
+
+/* AUTH / LICENSE */
+.auth-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:500;padding:20px}
+.auth-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:28px 24px;max-width:360px;width:100%}
+.auth-card h2{font-size:17px;font-weight:800;text-align:center;margin-bottom:4px}
+.auth-card p.sub{font-size:12px;color:var(--text2);text-align:center;margin-bottom:18px}
+.auth-card input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:11px 12px;color:var(--text);font-family:inherit;font-size:14px;outline:none;margin-bottom:10px}
+.auth-card input:focus{border-color:var(--accent)}
+.auth-card button{width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:10px;padding:12px;color:#0f1117;font-weight:800;font-size:14px;cursor:pointer;margin-top:4px}
+.auth-card button:disabled{opacity:.6;cursor:not-allowed}
+.auth-msg{font-size:12px;text-align:center;margin-top:12px;line-height:1.6;min-height:16px}
+.auth-msg.err{color:var(--red)}
+.auth-msg.ok{color:var(--green)}
 </style>
 </head>
 <body>
+<div class="auth-screen" id="authScreen">
+  <div class="auth-card">
+    <h2>📋 Tổ Trưởng – Nhật Ký Vi Phạm</h2>
+    <p class="sub">Đăng nhập để sử dụng</p>
+    <input type="email" id="authEmail" placeholder="Email" autocomplete="username">
+    <input type="password" id="authPass" placeholder="Mật khẩu" autocomplete="current-password">
+    <button id="authBtn" onclick="doLogin()">Đăng nhập</button>
+    <div class="auth-msg" id="authMsg"></div>
+  </div>
+</div>
+<div id="appWrap" style="display:none">
 <div class="toast" id="toast"></div>
 
 <header class="header">
@@ -153,7 +189,29 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;font
       <option value="4">Tổ 4</option>
     </select>
   </div>
+  <div class="date-bar" style="margin-top:6px;justify-content:space-between;display:flex">
+    <span id="lockInfo" style="font-size:11px;color:var(--text2);font-weight:700"></span>
+    <a href="javascript:void(0)" onclick="openChangePin()" style="font-size:11px;color:var(--accent);font-weight:700;text-decoration:none">🔓 Đổi mã / đổi tổ</a>
+  </div>
 </header>
+
+<!-- LOCK GATE -->
+<div class="setup-screen" id="lockGateScreen" style="display:none">
+  <div class="setup-card">
+    <h2>🔒 Xác nhận Tổ phụ trách</h2>
+    <p>Chọn tổ của bạn và nhập mã PIN được Chủ nhiệm cấp. Sau khi xác nhận, ứng dụng sẽ khóa đúng tổ này trên máy này để tránh nhầm lẫn hoặc sửa dữ liệu tổ khác.</p>
+    <div class="field-label">Chọn tổ của bạn</div>
+    <select class="setup-input" id="gateToSelect">
+      <option value="1">Tổ 1</option>
+      <option value="2">Tổ 2</option>
+      <option value="3">Tổ 3</option>
+      <option value="4">Tổ 4</option>
+    </select>
+    <div class="field-label">Mã PIN</div>
+    <input class="setup-input" type="password" inputmode="numeric" id="gatePinInput" placeholder="Nhập mã PIN được cấp">
+    <button class="btn btn-primary" style="margin-top:14px" onclick="confirmLockGate()">🔓 Xác nhận & bắt đầu</button>
+  </div>
+</div>
 
 <!-- SETUP -->
 <div class="setup-screen" id="setupScreen">
@@ -165,7 +223,7 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;font
       1. Chủ nhiệm xuất file JSON từ ứng dụng của mình<br>
       2. Gửi file cho từng tổ trưởng (Zalo/nhóm lớp)<br>
       3. Tổ trưởng bấm <b>Nạp file JSON</b> bên dưới<br>
-      4. Dùng ngay — không cần thiết lập thêm!
+      4. Nhập điểm mỗi ngày — <b>tự động đồng bộ</b>, không cần xuất file cuối tuần nữa!
     </div>
     <input type="file" id="importFile" accept=".json" onchange="importData(event)" style="display:none">
     <button class="btn btn-primary" onclick="document.getElementById('importFile').click()">📂 Nạp file JSON từ Chủ Nhiệm</button>
@@ -184,7 +242,7 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;font
       <div class="step-item"><div class="step-num">1</div><div class="step-txt"><b>Nhận file JSON từ Chủ Nhiệm</b><span>Chủ nhiệm vào app của mình → Quản lý → Xuất backup JSON → gửi cho tổ trưởng qua Zalo</span></div></div>
       <div class="step-item"><div class="step-num">2</div><div class="step-txt"><b>Nạp file vào ứng dụng</b><span>Bấm "Nạp file JSON từ Chủ Nhiệm" → chọn file vừa nhận → dữ liệu lớp tải vào tự động</span></div></div>
       <div class="step-item"><div class="step-num">3</div><div class="step-txt"><b>Nhập vi phạm mỗi ngày</b><span>Chọn học sinh → tích vi phạm → nhập điểm tốt → bấm Lưu. Làm vậy mỗi ngày trong tuần.</span></div></div>
-      <div class="step-item"><div class="step-num">4</div><div class="step-txt"><b>Gửi lại cho Chủ Nhiệm cuối tuần</b><span>Tab "Giao CN" → bấm "Xuất JSON gửi CN" → gửi file qua Zalo để CN tổng hợp toàn lớp</span></div></div>
+      <div class="step-item"><div class="step-num">4</div><div class="step-txt"><b>Xong! Không cần gửi file cuối tuần</b><span>Mỗi lần bấm "Lưu dữ liệu hôm nay", điểm sẽ tự động chuyển thẳng cho Chủ Nhiệm. Tab "Giao CN" chỉ dùng khi mất mạng.</span></div></div>
       <button class="btn btn-primary" onclick="document.getElementById('howtoModal').classList.remove('show')" style="margin-top:4px">Đã hiểu, đóng lại</button>
     </div>
   </div>
@@ -192,10 +250,16 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;font
 
 <!-- MAIN -->
 <div class="main-screen" id="mainScreen">
+  <div class="dashboard-stats" id="dashboardStats">
+    <div class="stat-card"><div class="stat-icon" style="background:rgba(108,142,245,.18)">👥</div><div class="stat-value" id="statSiSo" style="color:var(--accent)">0</div><div class="stat-label">Sĩ số tổ</div></div>
+    <div class="stat-card"><div class="stat-icon" style="background:rgba(52,211,153,.18)">✅</div><div class="stat-value" id="statDaNhap" style="color:var(--green)">0</div><div class="stat-label">Đã nhập</div></div>
+    <div class="stat-card"><div class="stat-icon" style="background:rgba(251,191,36,.18)">⏳</div><div class="stat-value" id="statChuaNhap" style="color:var(--yellow)">0</div><div class="stat-label">Chưa nhập</div></div>
+    <div class="stat-card"><div class="stat-icon" style="background:rgba(248,113,113,.18)">⚠️</div><div class="stat-value" id="statCanLuu" style="color:var(--red)">0</div><div class="stat-label">Cần lưu ý</div></div>
+  </div>
   <div class="nav-tabs">
-    <div class="nav-tab active" id="tabNhap" onclick="switchTab('nhap')">✏️ Nhập hôm nay</div>
-    <div class="nav-tab" id="tabTuan" onclick="switchTab('tuan')">📊 Tổng tuần</div>
-    <div class="nav-tab" id="tabGiao" onclick="switchTab('giao')">📤 Giao CN</div>
+    <div class="nav-tab active" id="tabNhap" onclick="switchTab('nhap')"><div class="nav-tab-icon" style="background:linear-gradient(135deg,#6c8ef5,#a78bfa)">✏️</div><div class="nav-tab-label">Nhập hôm nay</div></div>
+    <div class="nav-tab" id="tabTuan" onclick="switchTab('tuan')"><div class="nav-tab-icon" style="background:linear-gradient(135deg,#059669,#34d399)">📊</div><div class="nav-tab-label">Tổng tuần</div></div>
+    <div class="nav-tab" id="tabGiao" onclick="switchTab('giao')"><div class="nav-tab-icon" style="background:linear-gradient(135deg,#d97706,#fbbf24)">📤</div><div class="nav-tab-label">Giao CN</div></div>
   </div>
 
   <!-- TAB NHAP -->
@@ -267,11 +331,15 @@ body{background:var(--bg);color:var(--text);font-family:'Nunito',sans-serif;font
       <input type="file" id="reimportFile" accept=".json" onchange="importData(event)" style="display:none">
       <button class="btn btn-primary" onclick="document.getElementById('reimportFile').click()">📂 Nạp file JSON từ Chủ Nhiệm</button>
     </div>
+    <div class="setup-card" style="margin-top:0;border-color:rgba(52,211,153,.4)">
+      <h2>🔄 Đồng bộ với Chủ Nhiệm</h2>
+      <p>Dữ liệu tự động gửi lên mỗi lần bấm "Lưu dữ liệu hôm nay" — <b>không cần làm gì thêm cuối tuần</b>.</p>
+      <div class="info-box" id="syncStatusInfo">Chưa đồng bộ lần nào.</div>
+    </div>
     <div class="setup-card" style="margin-top:0">
-      <h2>📤 Giao dữ liệu cho Chủ Nhiệm</h2>
-      <p>Cuối tuần (Thứ Sáu), xuất file và gửi cho chủ nhiệm tổng hợp toàn lớp.</p>
-      <div class="info-box">⏰ Nên gửi trước <b>17h Thứ Sáu</b> để CN kịp gửi email phụ huynh.</div>
-      <button class="btn btn-green" onclick="exportForCN()">📤 Xuất JSON gửi Chủ Nhiệm</button>
+      <h2>📤 Xuất file dự phòng</h2>
+      <p>Chỉ dùng khi <b>mất mạng</b> hoặc chưa có địa chỉ đồng bộ — xuất file rồi gửi tay cho chủ nhiệm.</p>
+      <button class="btn btn-secondary" onclick="exportForCN()">📤 Xuất JSON gửi Chủ Nhiệm</button>
     </div>
   </div>
 </div>
@@ -317,8 +385,65 @@ const VIOLATIONS = [
   ]},
 ];
 
-let config={teacher:'',className:'',hocky:'1',students:[]};
+// violations lưu dạng {vid:soLan} để hỗ trợ 1 lỗi lặp nhiều lần/ngày.
+// Khi lưu/gửi đi vẫn quy về mảng có lặp id (vd ['v14','v14','v14']) để tương thích ngược với dữ liệu/CHU-NHIEM cũ.
+function arrToCountMap(arr){
+  const m={};
+  (arr||[]).forEach(vid=>{m[vid]=(m[vid]||0)+1;});
+  return m;
+}
+function countMapToArr(map){
+  const out=[];
+  Object.entries(map||{}).forEach(([vid,n])=>{for(let i=0;i<n;i++)out.push(vid);});
+  return out;
+}
+
+let config={teacher:'',className:'',hocky:'1',students:[],scriptUrl:''};
 let selectedId=null, todayData={}, weekData={};
+
+const DEFAULT_TO_PINS={1:'9999',2:'7777',3:'5555',4:'3333'};
+const DEFAULT_MASTER_PIN='GVCN9999'; // Mã tổng dự phòng nếu file từ Chủ nhiệm chưa có mã riêng
+
+function getToPin(to){return localStorage.getItem('to_pin_'+to)||(config.toPins&&config.toPins[to])||DEFAULT_TO_PINS[to];}
+function setToPin(to,pin){localStorage.setItem('to_pin_'+to,pin);}
+function getMasterPin(){return (config.masterPin)||DEFAULT_MASTER_PIN;}
+function getLockedTo(){return localStorage.getItem('locked_to')||'';}
+function setLockedTo(to){localStorage.setItem('locked_to',to);}
+function clearLockedTo(){localStorage.removeItem('locked_to');}
+
+function applyLockedTo(to){
+  const sel=document.getElementById('toInput');
+  sel.value=to; sel.disabled=true; sel.style.opacity='.65';
+  const lbl=document.getElementById('lockInfo');
+  if(lbl)lbl.textContent='🔒 Đang khóa: Tổ '+to;
+}
+
+function confirmLockGate(){
+  const to=document.getElementById('gateToSelect').value;
+  const pin=document.getElementById('gatePinInput').value.trim();
+  if(!pin){showToast('Nhập mã PIN!',true);return;}
+  if(pin!==getToPin(to)&&pin!==getMasterPin()){showToast('❌ Mã PIN không đúng!',true);return;}
+  setLockedTo(to);
+  applyLockedTo(to);
+  document.getElementById('lockGateScreen').style.display='none';
+  loadTodayData(); showMain();
+  showToast('✅ Đã khóa vào Tổ '+to);
+}
+
+function openChangePin(){
+  const cur=getLockedTo()||document.getElementById('toInput').value;
+  if(!cur){showToast('Chưa chọn tổ!',true);return;}
+  const entered=prompt('Nhập mã PIN hiện tại của Tổ '+cur+' (hoặc mã của Chủ nhiệm) để tiếp tục:');
+  if(entered===null)return;
+  if(entered!==getToPin(cur)&&entered!==getMasterPin()){showToast('❌ Mã PIN không đúng!',true);return;}
+  if(confirm('Bấm OK để ĐỔI MÃ PIN mới cho Tổ '+cur+'.\nBấm Cancel để MỞ KHÓA và chọn lại tổ khác.')){
+    const np=prompt('Nhập mã PIN mới (nên 4-6 số):');
+    if(np&&np.trim()){setToPin(cur,np.trim());showToast('✅ Đã đổi mã PIN mới cho Tổ '+cur+'.');}
+  }else{
+    clearLockedTo();
+    location.reload();
+  }
+}
 
 function init(){
   document.getElementById('dateInput').value=new Date().toISOString().slice(0,10);
@@ -329,11 +454,15 @@ function init(){
     config=d.config||config;
     weekData={};
     Object.entries(d.weekData||{}).forEach(([k,v])=>weekData[k]=v);
-    // Lọc theo tổ đã chọn (nếu có)
-    const myTo=localStorage.getItem('my_to')||'';
-    if(myTo) document.getElementById('toInput').value=myTo;
-    loadTodayData();
-    showMain();
+    const lockedTo=getLockedTo();
+    if(lockedTo){
+      applyLockedTo(lockedTo);
+      loadTodayData();
+      showMain();
+    }else{
+      document.getElementById('setupScreen').style.display='none';
+      document.getElementById('lockGateScreen').style.display='block';
+    }
   }
   document.getElementById('dateInput').addEventListener('change',loadTodayData);
   document.getElementById('weekInput').addEventListener('change',()=>{loadTodayData();renderWeekSummary()});
@@ -397,7 +526,7 @@ function loadTodayData(){
   config.students.forEach(s=>{
     const wd=weekData[s.id]; if(!wd)return;
     const ex=wd.days.find(d=>d.date===date&&d.week===week);
-    todayData[s.id]=ex?{goodScore:ex.goodScore,violations:new Set(ex.violations),absenceSang:ex.absenceSang||0,absenceChieu:ex.absenceChieu||0}:{goodScore:0,violations:new Set(),absenceSang:0,absenceChieu:0};
+    todayData[s.id]=ex?{goodScore:ex.goodScore,violations:arrToCountMap(ex.violations),absenceSang:ex.absenceSang||0,absenceChieu:ex.absenceChieu||0}:{goodScore:0,violations:{},absenceSang:0,absenceChieu:0};
   });
   renderStudentGrid();
 }
@@ -409,8 +538,8 @@ function renderStudentGrid(){
   const filtered=toFilter?config.students.filter(s=>s.to===toFilter):config.students;
   filtered.forEach(s=>{
     const wd=calcWeekScore(s.id);
-    const td=todayData[s.id]||{goodScore:0,violations:new Set()};
-    const hasData=td.goodScore>0||td.violations.size>0;
+    const td=todayData[s.id]||{goodScore:0,violations:{}};
+    const hasData=td.goodScore>0||Object.keys(td.violations).length>0;
     const rc=getRankClass(wd.rank);
     const div=document.createElement('div');
     div.className='student-btn'+(s.id===selectedId?' selected':'')+(hasData?' has-data':'');
@@ -418,6 +547,23 @@ function renderStudentGrid(){
     div.onclick=()=>selectStudent(s.id);
     grid.appendChild(div);
   });
+  renderDashboardStats(filtered);
+}
+
+function renderDashboardStats(filtered){
+  const box=document.getElementById('dashboardStats'); if(!box)return;
+  const list=filtered||(document.getElementById('toInput').value?config.students.filter(s=>s.to===document.getElementById('toInput').value):config.students);
+  let daNhap=0,canLuu=0;
+  list.forEach(s=>{
+    const td=todayData[s.id]||{goodScore:0,violations:{}};
+    if((td.goodScore>0)||(td.violations&&Object.keys(td.violations).length>0))daNhap++;
+    const wd=calcWeekScore(s.id);
+    if(wd.rank==='Đạt'||wd.rank==='Chưa đạt')canLuu++;
+  });
+  document.getElementById('statSiSo').textContent=list.length;
+  document.getElementById('statDaNhap').textContent=daNhap;
+  document.getElementById('statChuaNhap').textContent=list.length-daNhap;
+  document.getElementById('statCanLuu').textContent=canLuu;
 }
 
 function getRankClass(rank){
@@ -427,7 +573,7 @@ function getRankClass(rank){
 function selectStudent(id){
   selectedId=id;
   const s=config.students.find(x=>x.id===id);
-  const td=todayData[id]||{goodScore:0,violations:new Set()};
+  const td=todayData[id]||{goodScore:0,violations:{}};
   document.getElementById('inputPanel').classList.add('show');
   document.getElementById('saveBar').classList.add('show');
   const w=s.name.split(' ');
@@ -451,29 +597,44 @@ function selectStudent(id){
 }
 
 function renderViolations(){
-  const td=todayData[selectedId]||{goodScore:0,violations:new Set()};
+  const td=todayData[selectedId]||{goodScore:0,violations:{}};
   let html='';
   VIOLATIONS.forEach(cat=>{
     html+=`<div class="vcat-title">${cat.cat}</div>`;
     cat.items.forEach(v=>{
-      const c=td.violations.has(v.id);
-      html+=`<div class="vchip${c?' checked':''}" onclick="toggleV('${v.id}')"><span class="vchip-icon">${v.icon}</span><div class="vchip-text"><div class="vchip-label">${v.label}</div><div class="vchip-minus">-${v.minus} điểm</div></div><span class="chip-check">${c?'✓':''}</span></div>`;
+      const n=td.violations[v.id]||0;
+      const minusTxt=n>0?`-${v.minus} điểm × ${n} lần = -${v.minus*n} điểm`:`-${v.minus} điểm`;
+      html+=`<div class="vchip${n>0?' checked':''}">
+        <span class="vchip-icon">${v.icon}</span>
+        <div class="vchip-text" onclick="incV('${v.id}')"><div class="vchip-label">${v.label}</div><div class="vchip-minus">${minusTxt}</div></div>
+        <button class="counter-btn" style="width:30px;height:30px;font-size:16px" onclick="decV('${v.id}')">−</button>
+        <div class="counter-val" style="width:22px;font-size:15px;color:var(--red)">${n}</div>
+        <button class="counter-btn" style="width:30px;height:30px;font-size:16px" onclick="incV('${v.id}')">+</button>
+      </div>`;
     });
   });
   document.getElementById('violationList').innerHTML=html;
 }
-
-function toggleV(vid){
+function incV(vid){
   if(!selectedId)return;
-  if(!todayData[selectedId])todayData[selectedId]={goodScore:0,violations:new Set()};
+  if(!todayData[selectedId])todayData[selectedId]={goodScore:0,violations:{}};
   const v=todayData[selectedId].violations;
-  v.has(vid)?v.delete(vid):v.add(vid);
+  v[vid]=(v[vid]||0)+1;
+  renderViolations(); updateScoreDisplay();
+}
+function decV(vid){
+  if(!selectedId)return;
+  if(!todayData[selectedId])todayData[selectedId]={goodScore:0,violations:{}};
+  const v=todayData[selectedId].violations;
+  if(!v[vid])return;
+  v[vid]--;
+  if(v[vid]<=0)delete v[vid];
   renderViolations(); updateScoreDisplay();
 }
 
 function changeAbsence(buoi,delta){
   if(!selectedId)return;
-  if(!todayData[selectedId])todayData[selectedId]={goodScore:0,violations:new Set(),absenceSang:0,absenceChieu:0};
+  if(!todayData[selectedId])todayData[selectedId]={goodScore:0,violations:{},absenceSang:0,absenceChieu:0};
   const key=buoi==='sang'?'absenceSang':'absenceChieu';
   todayData[selectedId][key]=Math.max(0,Math.min(1,(todayData[selectedId][key]||0)+delta));
   document.getElementById('absenceSangVal').textContent=todayData[selectedId].absenceSang||0;
@@ -482,7 +643,7 @@ function changeAbsence(buoi,delta){
 
 function changeGoodScore(delta){
   if(!selectedId)return;
-  if(!todayData[selectedId])todayData[selectedId]={goodScore:0,violations:new Set()};
+  if(!todayData[selectedId])todayData[selectedId]={goodScore:0,violations:{}};
   todayData[selectedId].goodScore=Math.max(0,(todayData[selectedId].goodScore||0)+delta);
   document.getElementById('goodScoreVal').textContent=todayData[selectedId].goodScore;
   updateScoreDisplay();
@@ -508,7 +669,7 @@ function calcWeekScore(id){
     const alreadySaved=wd.days.find(d=>d.date===todayDate&&d.week===week);
     if(!alreadySaved){
       totalGood+=td.goodScore||0;
-      td.violations.forEach(vid=>{VIOLATIONS.forEach(cat=>{const v=cat.items.find(x=>x.id===vid);if(v)totalMinus+=v.minus;});});
+      Object.entries(td.violations||{}).forEach(([vid,n])=>{VIOLATIONS.forEach(cat=>{const v=cat.items.find(x=>x.id===vid);if(v)totalMinus+=v.minus*n;});});
     }
   }
   const score=Math.max(0,20+totalGood-totalMinus);
@@ -535,16 +696,43 @@ function saveStudentData(){
   const td=todayData[selectedId];
   const wd=weekData[selectedId];
   wd.days=wd.days.filter(d=>!(d.date===date&&d.week===week));
-  wd.days.push({date,week,goodScore:td.goodScore,violations:[...td.violations],absenceSang:td.absenceSang||0,absenceChieu:td.absenceChieu||0});
+  const violationsArr=countMapToArr(td.violations);
+  wd.days.push({date,week,goodScore:td.goodScore,violations:violationsArr,absenceSang:td.absenceSang||0,absenceChieu:td.absenceChieu||0});
   const ws=calcWeekScore(selectedId);
   wd.weekScore=ws.score; wd.rank=ws.rank;
   saveAll();
+  const s=config.students.find(x=>x.id===selectedId);
+  syncToServer({id:selectedId,name:s?.name||'',to:s?.to||'',date,week,goodScore:td.goodScore,violations:violationsArr.join(','),absenceSang:td.absenceSang||0,absenceChieu:td.absenceChieu||0});
   renderStudentGrid(); renderWeekSummary();
-  showToast(`✓ Đã lưu: ${config.students.find(s=>s.id===selectedId)?.name}`);
+  showToast(`✓ Đã lưu: ${s?.name}`);
 }
 
 function saveAll(){
   localStorage.setItem('to_truong_tt',JSON.stringify({config,weekData}));
+}
+
+// ── ĐỒNG BỘ TỰ ĐỘNG VỚI CHỦ NHIỆM (thay cho xuất file cuối tuần) ──────────────
+function syncToServer(entry){
+  const url=config.scriptUrl;
+  if(!url)return; // chưa có địa chỉ đồng bộ -> chỉ lưu cục bộ, dùng "Xuất file dự phòng"
+  const jsonData=JSON.stringify({type:'syncDaily',data:[entry]});
+  fetch(url,{method:'POST',mode:'no-cors',headers:{'Content-Type':'text/plain'},body:jsonData})
+    .catch(()=>{
+      const iframe=document.createElement('iframe');iframe.style.display='none';
+      iframe.src=url+'?data='+encodeURIComponent(jsonData);
+      document.body.appendChild(iframe);
+      setTimeout(()=>document.body.removeChild(iframe),3000);
+    });
+  const now=new Date().toLocaleString('vi-VN',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'});
+  localStorage.setItem('lastSyncSent',now);
+  updateSyncStatusInfo();
+}
+
+function updateSyncStatusInfo(){
+  const box=document.getElementById('syncStatusInfo'); if(!box)return;
+  const last=localStorage.getItem('lastSyncSent');
+  if(!config.scriptUrl){box.textContent='⚠️ Chưa có địa chỉ đồng bộ — dùng "Xuất file dự phòng" bên dưới, hoặc nhờ Chủ Nhiệm gửi lại file JSON mới.';return;}
+  box.textContent=last?`✅ Lần gửi gần nhất: ${last}`:'Chưa có lượt lưu nào hôm nay.';
 }
 
 function renderWeekSummary(){
@@ -567,6 +755,7 @@ function switchTab(tab){
     document.getElementById('tab'+t).classList.toggle('active',l===tab);
   });
   if(tab==='tuan')renderWeekSummary();
+  if(tab==='giao')updateSyncStatusInfo();
   if(tab!=='nhap')document.getElementById('saveBar').classList.remove('show');
   else if(selectedId)document.getElementById('saveBar').classList.add('show');
 }
@@ -579,7 +768,91 @@ function showToast(msg,isErr=false){
   setTimeout(()=>t.classList.remove('show'),2200);
 }
 
-init();
+/* ===== LICENSE / AUTH (dùng chung dự án Firebase de-kiem-tra-9aba7, tài khoản dùng chung cho 4 tổ trưởng) ===== */
+const firebaseConfig={
+  apiKey:"AIzaSyBmn54Z8ZZ2lGDQexVWyJiLD4K2h7jf6Iw",
+  authDomain:"de-kiem-tra-9aba7.firebaseapp.com",
+  projectId:"de-kiem-tra-9aba7"
+};
+firebase.initializeApp(firebaseConfig);
+const auth=firebase.auth();
+const db=firebase.firestore();
+const LICENSE_COLLECTION='licenses_totruong'; // riêng cho app Tổ Trưởng, tránh lẫn với license của app khác
+
+function setAuthMsg(text,cls){
+  const el=document.getElementById('authMsg');
+  el.textContent=text||'';
+  el.className='auth-msg'+(cls?' '+cls:'');
+}
+
+function parseHetHan(data){
+  const raw=data.ngayHetHan ?? data['ngay-het-han'] ?? data.ngayhethan ?? null;
+  if(!raw) return null;
+  if(typeof raw==='object' && typeof raw.toDate==='function') return raw.toDate();
+  if(typeof raw==='string'){
+    const m=raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if(m) return new Date(Number(m[3]),Number(m[2])-1,Number(m[1]),23,59,59);
+    const p=new Date(raw);
+    return isNaN(p.getTime())?null:p;
+  }
+  const p=new Date(raw);
+  return isNaN(p.getTime())?null:p;
+}
+
+function doLogin(){
+  const email=document.getElementById('authEmail').value.trim();
+  const pass=document.getElementById('authPass').value;
+  if(!email||!pass){setAuthMsg('Vui lòng nhập email và mật khẩu','err');return;}
+  const btn=document.getElementById('authBtn');
+  btn.disabled=true;setAuthMsg('Đang đăng nhập...','');
+  auth.signInWithEmailAndPassword(email,pass)
+    .catch(err=>{
+      btn.disabled=false;
+      let msg='Đăng nhập thất bại. Kiểm tra lại email/mật khẩu.';
+      if(err.code==='auth/user-not-found'||err.code==='auth/wrong-password'||err.code==='auth/invalid-credential') msg='Sai email hoặc mật khẩu.';
+      if(err.code==='auth/too-many-requests') msg='Bạn thử sai quá nhiều lần, vui lòng đợi rồi thử lại.';
+      setAuthMsg(msg,'err');
+    });
+}
+
+async function checkLicenseAndEnter(user){
+  setAuthMsg('Đang kiểm tra license...','');
+  try{
+    const doc=await db.collection(LICENSE_COLLECTION).doc(user.uid).get();
+    if(!doc.exists){
+      setAuthMsg('Tài khoản chưa được cấp quyền sử dụng. Vui lòng liên hệ để được cấp license.','err');
+      document.getElementById('authBtn').disabled=false;
+      auth.signOut();
+      return;
+    }
+    const data=doc.data();
+    const active=data.active!==false;
+    const hetHan=parseHetHan(data);
+    const now=new Date();
+    if(!active || !hetHan || hetHan<now){
+      setAuthMsg('Tài khoản đã hết hạn sử dụng. Vui lòng liên hệ để gia hạn.','err');
+      document.getElementById('authBtn').disabled=false;
+      auth.signOut();
+      return;
+    }
+    document.getElementById('authScreen').style.display='none';
+    document.getElementById('appWrap').style.display='';
+    init();
+  }catch(e){
+    setAuthMsg('Có lỗi khi kiểm tra license, vui lòng thử lại: '+e.message,'err');
+    document.getElementById('authBtn').disabled=false;
+  }
+}
+
+auth.onAuthStateChanged(user=>{
+  if(user){
+    checkLicenseAndEnter(user);
+  }else{
+    document.getElementById('authScreen').style.display='flex';
+    document.getElementById('appWrap').style.display='none';
+  }
+});
 </script>
+</div><!-- /appWrap -->
 </body>
 </html>
